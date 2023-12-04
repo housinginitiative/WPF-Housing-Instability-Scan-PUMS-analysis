@@ -1,0 +1,862 @@
+---
+title: "WPF Housing Instability"
+author: "Anna Duan"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    keep_md: yes
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    number_sections: yes
+    theme: "flatly"
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(pander)
+library(conflicted)
+conflicts_prefer(dplyr::filter)
+```
+
+# Surveys  
+Baseline survey: n = 5200
+Survey: n = 6251
+```{r survey universe}
+survey_1 <- read.csv("/Users/annaduan/Library/CloudStorage/Box-Box/CLS Renter Survey/data/survey/Philly+Baseline+-+Phase+4_August+6,+2021_10.57.csv") %>%
+  unique()
+
+q1 <- survey_1 %>%
+  head(1) %>%
+  gather(key = "code", value = "question")
+
+survey_2 <- read.csv("/Users/annaduan/Library/CloudStorage/Box-Box/CLS Renter Survey/data/survey/CLS+Renter+Survey_August+25,+2021_12.26.csv") %>%
+  unique()
+
+q2 <- survey_2 %>%
+  head(1) %>%
+  gather(key = "code", value = "question")
+
+t <- full_join(q1, q2, by = "question")
+
+```
+
+# PUMS
+PUMS: 38456 households, 117328 people
+```{r pums universe}
+pums <- read.csv("data/pums2021.csv")
+```
+
+### Philadelphia overall
+#### Overall
+##### Housing cost burden
+```{r housing cost burden}
+pums %>%
+    mutate(count = 1,
+      rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    ))) %>%
+  group_by(rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+
+##### Overcrowding 
+```{r overcrowding}
+pums %>%
+  select(NP, BDSP) %>%
+  mutate(count = 1,
+      occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r residence 1 year ago}
+pums %>%
+  select(MIG_label) %>%
+  mutate(count = 1) %>%
+  group_by(MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Moved in last year")
+```
+##### Tenure
+```{r tenure}
+pums %>%
+  select(TEN_label) %>%
+  mutate(count = 1) %>%
+  group_by(TEN_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Tenure")
+```
+##### Housing quality
+```{r housing quality}
+pums %>%
+  mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "full kitchen, full plumbing",
+      KIT == 1 & PLM == 2 ~ "full kitchen, partial plumbing",
+      KIT == 2 & PLM == 1 ~ "partial kitchen, full plumbing",
+      KIT == 2 & PLM == 2 ~ "partial kitchen, partial plumbing"
+    ))) %>%
+  group_by(housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Income 
+##### Housing cost burden
+```{r income/housing cost burden}
+pums_inc <- pums %>%
+  mutate(count = 1,
+      income_cat = factor(case_when(
+      HINCP < 35000 ~ "< 35k",
+      HINCP >= 35000 & HINCP < 50000 ~ "35k - 50k",
+      HINCP >= 50000 & HINCP < 100000 ~ "50k - 100k",
+      HINCP >= 100000 ~ "> 100k"
+    )))
+
+pums_inc %>%
+    mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    ))) %>%
+  group_by(income_cat, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(rent_burden_cat)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r income/overcrowding}
+pums_inc %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(income_cat, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r income/residence 1 year ago}
+pums_inc %>%
+  group_by(income_cat, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(MIG_label)) %>%
+  pander(caption = "Moved in last year")
+```
+##### Tenure
+```{r income/tenure}
+pums_inc %>%
+  group_by(income_cat, TEN_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(TEN_label)) %>%
+  pander(caption = "Tenure")
+```
+
+##### Housing quality
+```{r income/housing quality}
+pums_inc %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(income_cat, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Race/ethnicity
+##### Rent burden
+```{r race/housing cost burden}
+pums %>%
+    mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(HHLDRRAC1P_label, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r race/overcrowding}
+pums %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(HHLDRRAC1P_label, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r race/residence 1 year ago}
+pums %>%
+  mutate(count = 1) %>%
+  group_by(HHLDRRAC1P_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+##### Tenure 
+```{r race/tenure}
+pums %>%
+  mutate(count = 1) %>%
+  group_by(HHLDRRAC1P_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+##### Housing quality
+```{r race/housing quality}
+pums %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "full kitchen, full plumbing",
+      KIT == 1 & PLM == 2 ~ "full kitchen, partial plumbing",
+      KIT == 2 & PLM == 1 ~ "partial kitchen, full plumbing",
+      KIT == 2 & PLM == 2 ~ "partial kitchen, partial plumbing"
+    ))) %>%
+  group_by(HHLDRRAC1P_label, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Sub-geography
+#### Housing cost burden
+```{r geo/housing cost burden}
+pums_puma <- pums %>%
+  mutate(region = factor(case_when(
+    PUMA == 03201  ~ "Far Northeast",
+    PUMA == 03202  ~ "Far Northeast - West",
+    PUMA == 03203  ~ "Far Northeast - East",
+    PUMA == 03204  ~ "North",
+    PUMA == 03205  ~ "East",
+    PUMA == 03206  ~ "Northwest",
+    PUMA == 03207  ~ "Central",
+    PUMA == 03208  ~ "West",
+    PUMA == 03209  ~ "Center City",
+    PUMA == 03210  ~ "Southwest",
+    PUMA == 03211  ~ "Southeast")))
+
+pums_puma %>%
+   mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(region, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r geo/overcrowding}
+pums_puma %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(region, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+
+##### Residence 1 year ago
+```{r geo/residence 1 year ago}
+pums_puma %>%
+  mutate(count = 1) %>%
+  group_by(region, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Tenure
+```{r geo/tenure}
+pums_puma %>%
+  mutate(count = 1) %>%
+  group_by(region, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Housing quality
+```{r geo/housing quality}
+pums_puma %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(region, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Tenure
+##### Housing cost burden
+```{r tenure/housing cost burden}
+pums %>%
+   mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(TEN_label, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+
+##### Overcrowding
+```{r tenure/overcrowding}
+pums %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(TEN_label, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+
+##### Residence 1 year ago
+```{r tenure/residence 1 year ago}
+pums %>%
+  mutate(count = 1) %>%
+  group_by(TEN_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Housing quality
+```{r tenure/housing quality}
+pums %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(TEN_label, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+### Philadelphia households with young children (<6 years)
+Households with children < 6 years: n = 3528
+##### Housing cost burden
+```{r housing cost burden x kids}
+pums_kids <- pums %>%
+  filter(HUPAC_label == "With children under 6 years only")
+
+pums_kids %>%
+    mutate(count = 1,
+      rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    ))) %>%
+  group_by(rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+
+##### Overcrowding 
+```{r overcrowding x kids}
+pums_kids %>%
+  select(NP, BDSP) %>%
+  mutate(count = 1,
+      occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r residence 1 year ago x kids}
+pums_kids %>%
+  select(MIG_label) %>%
+  mutate(count = 1) %>%
+  group_by(MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Moved in last year")
+```
+##### Tenure
+```{r tenure x kids}
+pums_kids %>%
+  select(TEN_label) %>%
+  mutate(count = 1) %>%
+  group_by(TEN_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Tenure")
+```
+##### Housing quality
+```{r housing quality x kids}
+pums_kids %>%
+  mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(pct)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Income 
+##### Housing cost burden
+```{r income/housing cost burden x kids}
+pums_inc <- pums_kids %>%
+  mutate(count = 1,
+      income_cat = factor(case_when(
+      HINCP < 35000 ~ "< 35k",
+      HINCP >= 35000 & HINCP < 50000 ~ "35k - 50k",
+      HINCP >= 50000 & HINCP < 100000 ~ "50k - 100k",
+      HINCP >= 100000 ~ "> 100k"
+    )))
+
+pums_inc %>%
+    mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    ))) %>%
+  group_by(income_cat, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(rent_burden_cat)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r income/overcrowding x kids}
+pums_inc %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(income_cat, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r income/residence 1 year ago x kids}
+pums_inc %>%
+  group_by(income_cat, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(MIG_label)) %>%
+  pander(caption = "Moved in last year")
+```
+##### Tenure
+```{r income/tenure x kids}
+pums_inc %>%
+  group_by(income_cat, TEN_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(TEN_label)) %>%
+  pander(caption = "Tenure")
+```
+
+##### Housing quality
+```{r income/housing quality x kids}
+pums_inc %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(income_cat, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(income_cat) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(income_cat), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Race/ethnicity
+##### Rent burden
+```{r race/housing cost burden x kids}
+pums_kids %>%
+    mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(HHLDRRAC1P_label, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r race/overcrowding x kids}
+pums_kids %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(HHLDRRAC1P_label, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+##### Residence 1 year ago
+```{r race/residence 1 year ago x kids}
+pums_kids %>%
+  mutate(count = 1) %>%
+  group_by(HHLDRRAC1P_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+##### Tenure 
+```{r race/tenure x kids}
+pums_kids %>%
+  mutate(count = 1) %>%
+  group_by(HHLDRRAC1P_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+##### Housing quality
+```{r race/housing quality x kids}
+pums_kids %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(HHLDRRAC1P_label, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(HHLDRRAC1P_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(HHLDRRAC1P_label), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Sub-geography
+#### Housing cost burden
+```{r geo/housing cost burden x kids}
+pums_puma <- pums_kids %>%
+  mutate(region = factor(case_when(
+    PUMA == 03201  ~ "Far Northeast",
+    PUMA == 03202  ~ "Far Northeast - West",
+    PUMA == 03203  ~ "Far Northeast - East",
+    PUMA == 03204  ~ "North",
+    PUMA == 03205  ~ "East",
+    PUMA == 03206  ~ "Northwest",
+    PUMA == 03207  ~ "Central",
+    PUMA == 03208  ~ "West",
+    PUMA == 03209  ~ "Center City",
+    PUMA == 03210  ~ "Southwest",
+    PUMA == 03211  ~ "Southeast")))
+
+pums_puma %>%
+   mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(region, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+##### Overcrowding
+```{r geo/overcrowding x kids}
+pums_puma %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(region, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+
+##### Residence 1 year ago
+```{r geo/residence 1 year ago x kids}
+pums_puma %>%
+  mutate(count = 1) %>%
+  group_by(region, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Tenure
+```{r geo/tenure x kids}
+pums_puma %>%
+  mutate(count = 1) %>%
+  group_by(region, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Housing quality
+```{r geo/housing quality x kids}
+pums_puma %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(region, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(region) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(region), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
+
+#### Tenure
+##### Housing cost burden
+```{r tenure/housing cost burden x kids}
+pums_kids %>%
+   mutate(rent_burden_cat = factor(case_when(
+      GRPIP < 30 ~ "Low (< 30%)",
+      GRPIP >= 30 & GRPIP < 50 ~ "Moderate (30-50%)",
+      GRPIP >= 50 ~ "Severe (>= 50%)"
+    )),
+    count = 1) %>%
+  group_by(TEN_label, rent_burden_cat) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(rent_burden_cat), desc(pct)) %>%
+  pander(caption = "Rent burden")
+```
+
+##### Overcrowding
+```{r tenure/overcrowding x kids}
+pums_kids %>%
+  mutate(count = 1,
+    occupants_per_room = factor(case_when(
+      NP/BDSP <= 2 ~ "<=2",
+      NP/BDSP >= 2 & NP/BDSP < 6 ~ "3-5",
+      NP/BDSP >= 6 & NP/BDSP < 9 ~ "6-9",
+      NP/BDSP >= 9 ~ "9+"
+    ))) %>%
+  group_by(TEN_label, occupants_per_room) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(occupants_per_room)) %>%
+  pander(caption = "Occupants per room")
+```
+
+##### Residence 1 year ago
+```{r tenure/residence 1 year ago x kids}
+pums_kids %>%
+  mutate(count = 1) %>%
+  group_by(TEN_label, MIG_label) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(MIG_label)) %>%
+  pander(caption = "Residence 1 year ago")
+```
+
+##### Housing quality
+```{r tenure/housing quality x kids}
+pums_kids %>%
+    mutate(count = 1,
+         housing_quality = factor(case_when(
+      KIT == 1 & PLM == 1 ~ "complete facilities",
+      KIT == 2 | PLM == 2 ~ "incomplete facilities"
+    ))) %>%
+  group_by(TEN_label, housing_quality) %>%
+  summarize(households = sum(count)) %>%
+  ungroup() %>%
+  group_by(TEN_label) %>%
+  mutate(pct = 100*households/sum(households)) %>%
+  arrange(desc(TEN_label), desc(housing_quality)) %>%
+  pander(caption = "Housing quality")
+```
